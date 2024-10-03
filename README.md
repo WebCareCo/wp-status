@@ -37,3 +37,5 @@ The WebCare Info Logger plugin allows you to collect and store detailed system i
 - Easy log deletion and management functionality.
 
 This plugin is ideal for site administrators who need a convenient way to track their site's system details over time or diagnose performance issues.
+
+[WebCare - WordPress Maintenance](https://webcare.co)
