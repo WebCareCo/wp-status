@@ -1,9 +1,9 @@
 # WebCare Info Logger Plugin
 
-**Description:**
+## Description
 The WebCare Info Logger plugin allows you to collect and store detailed system information about your WordPress site in JSON format. The plugin gathers essential data, including WordPress version, PHP version, MySQL version, theme information, page/post counts, custom post type counts, active/inactive plugin details, CSS/JS asset counts, database size, media folder size, and user statistics. This data is then stored in a log file, which can be managed from the WordPress admin area. You can view, delete, or clear all logs directly from the plugin's interface.
 
-**How to Use:**
+## How to Use:
 1. **Install and Activate the Plugin:**
    Download the plugin, install it via the WordPress dashboard, and activate it.
 
@@ -29,7 +29,7 @@ The WebCare Info Logger plugin allows you to collect and store detailed system i
 6. **Storage Location:**
    All log files are saved in the `/log` folder within the plugin's directory in JSON format. The files are named using your website's URL and the date of log creation.
 
-**Key Features:**
+## Key Features
 - Simple system information logging for WordPress.
 - Logs can be viewed and managed from the WordPress admin dashboard.
 - Automatically counts and logs CSS and JS files loaded on the main page.
