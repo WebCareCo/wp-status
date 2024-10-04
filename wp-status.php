@@ -90,7 +90,8 @@ function wp_status_page() {
 
             <?php submit_button('Save Schedule', 'secondary', 'save_schedule_frequency'); ?>
         </form>
-
+        <!-- PHP Countdown Timer -->
+    <?php scheduled_run(); ?>
         <hr>
 
         <!-- Your existing log table and buttons go here -->

@@ -60,7 +60,13 @@ function show_wp_status_log(){
                     echo 'Database Size: ' . esc_html($data['db_size']);
                     echo '</td>';
                     echo '<td>' . esc_html($data['users_count']) . '</td>';
-                    echo '<td><a href="' . esc_url(add_query_arg('delete_log', $filename)) . '" class="button button-danger">Delete</a></td>';
+                    echo '<td>';
+                    
+                    // Add Download link for the JSON file
+                    $download_url = plugin_dir_url(__FILE__) . 'log/' . $filename;
+                    echo '<a href="' . esc_url($download_url) . '" class="button" download>Download JSON</a> ';
+
+                    echo '<a href="' . esc_url(add_query_arg('delete_log', $filename)) . '" class="button button-danger">Delete</a></td>';
                     echo '</tr>';
                 }
             }

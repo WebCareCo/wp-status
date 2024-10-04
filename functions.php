@@ -61,8 +61,8 @@ function wp_system_info_saver_count_assets_on_home() {
 }
 
 // Save system info when form is submitted
-function wp_system_info_saver_save_info() {
-    if (isset($_POST['save_system_info'])) {
+function wp_system_info_saver_save_info($manual_trigger = false) { //added manual trigger
+    if ($manual_trigger || isset($_POST['save_system_info'])) {
         global $wpdb;
 
         // Calculate post counts
@@ -142,14 +142,16 @@ add_action('admin_init', 'wp_system_info_saver_save_info');
 
 // Version 1.6 up to here
 
+// Hook into the form submission for manual trigger
+add_action('admin_post_save_system_info', 'wp_system_info_saver_save_info');
+
+// Function to generate log and store it via WP Cron
+function webcare_generate_log() {
+    wp_system_info_saver_save_info(true); // Pass true to indicate it's manually triggered
+}
+
 // Register the cron event hook
 add_action('webcare_generate_log_event', 'webcare_generate_log');
-
-// Function to generate log and store it
-function webcare_generate_log() {
-    // Call your log creation function here (assumes it's inside your 'functions.php')
-    webcare_save_system_info(); // Replace with your actual log generation function
-}
 
 // Function to schedule or unschedule cron based on frequency
 function webcare_update_cron_schedule($frequency) {
@@ -210,3 +212,25 @@ register_deactivation_hook(__FILE__, function() {
         wp_unschedule_event($timestamp, 'webcare_generate_log_event');
     }
 });
+
+function scheduled_run(){
+    // Get the next scheduled event timestamp for the cron job
+    $next_schedule_time = wp_next_scheduled('webcare_generate_log_event'); // Replace with your cron event hook
+    if ($next_schedule_time) {
+        $current_time = time();
+        $time_difference = $next_schedule_time - $current_time;
+
+        if ($time_difference > 0) {
+            // Calculate hours, minutes, and seconds
+            $hours = floor($time_difference / 3600);
+            $minutes = floor(($time_difference % 3600) / 60);
+            $seconds = $time_difference % 60;
+
+            echo "<p>Time left to generate log: $hours hours, $minutes minutes, and $seconds seconds</p>";
+        } else {
+            echo "<p>The next log will be generated soon.</p>";
+        }
+    } else {
+        echo "<p>No scheduled log generation.</p>";
+    }
+}
