@@ -2,7 +2,7 @@
 /*
 Plugin Name: WebCare WP Status
 Description: Save important system information into the database in JSON format.
-Version: 1.7
+Version: 1.8
 Author: WebCare
 Author URI: https://webcare.co
 */
