@@ -23,6 +23,14 @@ function wp_system_info_saver_menu() {
 }
 add_action('admin_menu', 'wp_system_info_saver_menu');
 
+// Add a Settings link on the Plugins page for WP Status
+function wp_status_add_settings_link($links) {
+    $settings_link = '<a href="' . admin_url('tools.php?page=wp_status') . '">Settings</a>';
+    array_push($links, $settings_link);
+    return $links;
+}
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'wp_status_add_settings_link');
+
 // Display admin page
 function wp_status_page() {
     // Handle log deletion
@@ -95,7 +103,6 @@ function wp_status_page() {
         <hr>
 
         <!-- Your existing log table and buttons go here -->
-        <hr>
         <?php show_wp_status_log(); ?>
         
     <hr>

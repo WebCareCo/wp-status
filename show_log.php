@@ -11,6 +11,9 @@ function show_wp_status_log(){
 
         // Display all JSON logs in a table
         $log_files = glob($log_dir . '*.json');
+        usort($log_files, function($a, $b) {
+            return filemtime($b) - filemtime($a); // Descending order
+        });
 
         if ($log_files) {
             echo '<h2>System Info Logs</h2>';
