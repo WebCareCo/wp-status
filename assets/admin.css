@@ -1,0 +1,160 @@
+.webcare-wp-status .wp-heading-inline .dashicons {
+	font-size: 28px;
+	width: 28px;
+	height: 28px;
+	vertical-align: middle;
+	margin-right: 6px;
+	color: #2271b1;
+}
+
+.webcare-wp-status .description {
+	max-width: 60em;
+	font-size: 14px;
+}
+
+.webcare-wp-status-settings-heading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 24px 0 4px;
+}
+
+.webcare-wp-status-settings-heading .dashicons {
+	color: #2271b1;
+}
+
+.webcare-wp-status-columns {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 20px;
+	margin: 20px 0;
+}
+
+.webcare-wp-status-card {
+	flex: 1 1 260px;
+	max-width: none;
+	margin: 0;
+}
+
+.webcare-wp-status-card h2 {
+	margin-top: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.webcare-wp-status-card h2 .dashicons {
+	color: #2271b1;
+}
+
+.webcare-wp-status-card .description {
+	margin-top: -4px;
+}
+
+.webcare-wp-status-next-run {
+	background: #f6f7f7;
+	border-left: 4px solid #2271b1;
+	padding: 8px 12px;
+	margin: 14px 0 0;
+	font-size: 13px;
+}
+
+.webcare-wp-status-section-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.webcare-wp-status-section-title .dashicons {
+	color: #2271b1;
+}
+
+.webcare-wp-status-count {
+	color: #646970;
+	font-weight: 400;
+	font-size: 13px;
+}
+
+.webcare-wp-status-table {
+	margin-top: 12px;
+}
+
+.webcare-wp-status-table th {
+	white-space: nowrap;
+}
+
+.webcare-wp-status-table td {
+	vertical-align: top;
+	padding-top: 12px;
+	padding-bottom: 12px;
+}
+
+.webcare-wp-status-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.webcare-wp-status-list li {
+	padding: 1px 0;
+}
+
+.webcare-wp-status-list .label {
+	color: #646970;
+}
+
+.webcare-wp-status-badge {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 10px;
+	background: #f0f0f1;
+	font-size: 12px;
+	line-height: 1.6;
+}
+
+.webcare-wp-status-badge.is-active {
+	background: #edfaef;
+	color: #1a7d2c;
+}
+
+.webcare-wp-status-badge.is-inactive {
+	background: #fcf0f1;
+	color: #b32d2e;
+}
+
+.webcare-wp-status-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-items: flex-start;
+}
+
+.webcare-wp-status-actions .button {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.webcare-wp-status-actions .dashicons {
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+}
+
+.webcare-wp-status-empty {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 24px;
+	text-align: center;
+	color: #646970;
+}
+
+.webcare-wp-status-footer {
+	margin-top: 30px;
+	padding-top: 16px;
+	border-top: 1px solid #dcdcde;
+	color: #646970;
+	font-size: 13px;
+}

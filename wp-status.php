@@ -2,10 +2,19 @@
 /*
 Plugin Name: WebCare WP Status
 Description: Save important system information into the database in JSON format.
-Version: 1.8
+Version: 1.9
 Author: WebCare
 Author URI: https://webcare.co
+Requires at least: 5.5
+Requires PHP: 7.4
+Text Domain: wp-status
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit; // Exit if accessed directly.
+}
 
 // Include the functions file
 require_once plugin_dir_path(__FILE__) . 'functions.php';
@@ -13,7 +22,8 @@ require_once plugin_dir_path(__FILE__) . 'show_log.php';
 
 // Create the admin menu under Tools
 function wp_system_info_saver_menu() {
-    add_management_page(
+    global $webcare_wp_status_hook;
+    $webcare_wp_status_hook = add_management_page(
         'WebCare WP Status',
         'WebCare WP Status',
         'manage_options',
@@ -23,9 +33,24 @@ function wp_system_info_saver_menu() {
 }
 add_action('admin_menu', 'wp_system_info_saver_menu');
 
+// Only load our stylesheet on the plugin's own admin page
+function wp_status_enqueue_assets($hook) {
+    global $webcare_wp_status_hook;
+    if ( $hook !== $webcare_wp_status_hook ) {
+        return;
+    }
+    wp_enqueue_style(
+        'webcare-wp-status-admin',
+        plugin_dir_url(__FILE__) . 'assets/admin.css',
+        array(),
+        '1.9'
+    );
+}
+add_action('admin_enqueue_scripts', 'wp_status_enqueue_assets');
+
 // Add a Settings link on the Plugins page for WP Status
 function wp_status_add_settings_link($links) {
-    $settings_link = '<a href="' . admin_url('tools.php?page=wp_status') . '">Settings</a>';
+    $settings_link = '<a href="' . esc_url( admin_url('tools.php?page=wp_status') ) . '">Settings</a>';
     array_push($links, $settings_link);
     return $links;
 }
@@ -33,80 +58,169 @@ add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'wp_status_add_se
 
 // Display admin page
 function wp_status_page() {
-    // Handle log deletion
-    if (isset($_GET['delete_log'])) {
-        $log_file = sanitize_text_field($_GET['delete_log']);
-        $log_path = plugin_dir_path(__FILE__) . 'log/' . $log_file;
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to access this page.', 'wp-status' ) );
+    }
 
-        if (file_exists($log_path)) {
-            unlink($log_path);
-            echo '<div class="notice notice-success"><p>Log file deleted successfully!</p></div>';
+    // Handle log deletion
+    if ( isset( $_GET['delete_log'] ) ) {
+        $log_file = sanitize_file_name( wp_unslash( $_GET['delete_log'] ) );
+        check_admin_referer( 'webcare_delete_log_' . $log_file );
+
+        $log_dir       = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+        $log_dir_real  = realpath( $log_dir );
+        $log_path_real = realpath( $log_dir . $log_file );
+
+        if ( $log_dir_real && $log_path_real && 0 === strpos( $log_path_real, $log_dir_real ) && 'json' === strtolower( pathinfo( $log_path_real, PATHINFO_EXTENSION ) ) ) {
+            unlink( $log_path_real );
+            echo '<div class="notice notice-success"><p>' . esc_html__( 'Log file deleted successfully!', 'wp-status' ) . '</p></div>';
         } else {
-            echo '<div class="notice notice-error"><p>Log file not found!</p></div>';
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Log file not found!', 'wp-status' ) . '</p></div>';
         }
     }
 
     // Handle clear all logs
-    if (isset($_POST['clear_logs'])) {
-        $log_dir = plugin_dir_path(__FILE__) . 'log/';
-        array_map('unlink', glob("$log_dir*.json")); // Deletes all JSON files in the log folder
-        echo '<div class="notice notice-success"><p>All log files cleared!</p></div>';
+    if ( isset( $_POST['clear_logs'] ) ) {
+        check_admin_referer( 'webcare_clear_logs', 'webcare_wp_status_nonce' );
+
+        $log_dir = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+        foreach ( (array) glob( $log_dir . '*.json' ) as $file ) {
+            unlink( $file );
+        }
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'All log files cleared!', 'wp-status' ) . '</p></div>';
     }
+
+    // Handle saving the auto-delete retention period
+    if ( isset( $_POST['save_log_retention'] ) ) {
+        check_admin_referer( 'webcare_save_retention', 'webcare_wp_status_nonce' );
+
+        $retention_days = isset( $_POST['log_retention_days'] ) ? absint( $_POST['log_retention_days'] ) : 0;
+        update_option( 'webcare_log_retention_days', $retention_days );
+
+        if ( $retention_days > 0 ) {
+            echo '<div class="notice notice-success"><p>' . esc_html( sprintf( __( 'Logs older than %d day(s) will now be auto-deleted.', 'wp-status' ), $retention_days ) ) . '</p></div>';
+        } else {
+            echo '<div class="notice notice-success"><p>' . esc_html__( 'Auto-delete turned off. Logs will be kept indefinitely.', 'wp-status' ) . '</p></div>';
+        }
+    }
+
+    // Handle purging old logs on demand
+    if ( isset( $_POST['purge_old_logs'] ) ) {
+        check_admin_referer( 'webcare_purge_logs', 'webcare_wp_status_nonce' );
+
+        $retention_days = (int) get_option( 'webcare_log_retention_days', 90 );
+        if ( $retention_days > 0 ) {
+            $deleted = webcare_wp_status_purge_old_logs( $retention_days );
+            echo '<div class="notice notice-success"><p>' . esc_html( sprintf( _n( 'Purged %d log file older than %d day(s).', 'Purged %d log files older than %d day(s).', $deleted, 'wp-status' ), $deleted, $retention_days ) ) . '</p></div>';
+        } else {
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Set a retention period above 0 days before purging.', 'wp-status' ) . '</p></div>';
+        }
+    }
+
     // Get the current schedule frequency and custom days from the database
     $current_frequency = get_option('webcare_log_schedule_frequency', 'weekly');
     $custom_days = get_option('webcare_log_custom_days', 7); // Default 7 days for custom
+    $retention_days = (int) get_option('webcare_log_retention_days', 90); // default: auto-delete after 90 days
 
 
     ?>
-    <div class="wrap">
-        <h1>WebCare WP Status</h1>
-        <hr>
-        <p>Click the button below to create a new log. Please wait a few seconds to generate.</p>
-        <p>All log files are stored in /log folder. Making it quicker to generate and retrieved.</p>
-        
-        <form method="post" action="">
-            <?php submit_button('Create a New Log', 'primary', 'save_system_info'); ?>
-        </form>
-        <!-- Log Scheduling Form -->
-        <h2>Log Scheduling Options</h2>
-        <p>Select how often you want the logs to be automatically generated:</p>
-        <form method="post" action="">
-            <label>
-                <input type="radio" name="schedule_frequency" value="daily" <?php checked($current_frequency, 'daily'); ?>>
-                Daily
-            </label><br>
+    <div class="wrap webcare-wp-status">
+        <h1 class="wp-heading-inline">
+            <span class="dashicons dashicons-chart-bar"></span>
+            WebCare WP Status
+        </h1>
+        <p class="description">Capture a snapshot of your site's system info, content counts, and plugin/theme setup — on demand or on a schedule. Logs are stored in the plugin's <code>/log</code> folder.</p>
 
-            <label>
-                <input type="radio" name="schedule_frequency" value="weekly" <?php checked($current_frequency, 'weekly'); ?>>
-                Weekly (default)
-            </label><br>
+        <hr class="wp-header-end">
 
-            <label>
-                <input type="radio" name="schedule_frequency" value="monthly" <?php checked($current_frequency, 'monthly'); ?>>
-                Monthly
-            </label><br>
+        <?php webcare_wp_status_show_log(); ?>
 
-            <label>
-                <input type="radio" name="schedule_frequency" value="custom" <?php checked($current_frequency, 'custom'); ?>>
-                Custom Interval (every <input type="number" name="custom_days" value="<?php echo esc_attr($custom_days); ?>" min="1" style="width: 50px;"> days)
-            </label><br>
-
-            <label>
-                <input type="radio" name="schedule_frequency" value="manual" <?php checked($current_frequency, 'manual'); ?>>
-                Manual (turned off)
-            </label><br>
-
-            <?php submit_button('Save Schedule', 'secondary', 'save_schedule_frequency'); ?>
-        </form>
-        <!-- PHP Countdown Timer -->
-    <?php scheduled_run(); ?>
         <hr>
 
-        <!-- Your existing log table and buttons go here -->
-        <?php show_wp_status_log(); ?>
-        
-    <hr>
-    <p>Made by <a href="https://webcare.co">WebCare - WordPress Maintenance</a> Helping you manage your WordPress better</p>
+        <h2 class="webcare-wp-status-settings-heading"><span class="dashicons dashicons-admin-generic"></span> Settings</h2>
+
+        <div class="webcare-wp-status-columns">
+
+            <div class="card webcare-wp-status-card">
+                <h2><span class="dashicons dashicons-update"></span> Generate a Log</h2>
+                <p class="description">Click below to capture a fresh snapshot right now. It only takes a few seconds.</p>
+                <form method="post" action="">
+                    <?php wp_nonce_field( 'webcare_create_log', 'webcare_wp_status_nonce' ); ?>
+                    <?php submit_button('Create a New Log', 'primary', 'save_system_info', false); ?>
+                </form>
+                <p class="webcare-wp-status-next-run"><?php webcare_wp_status_scheduled_run(); ?></p>
+            </div>
+
+            <div class="card webcare-wp-status-card">
+                <h2><span class="dashicons dashicons-calendar-alt"></span> Automatic Schedule</h2>
+                <p class="description">Choose how often a new log should be generated automatically.</p>
+                <form method="post" action="">
+                    <?php wp_nonce_field( 'webcare_save_schedule', 'webcare_wp_status_nonce' ); ?>
+                    <p>
+                        <label>
+                            <input type="radio" name="schedule_frequency" value="daily" <?php checked($current_frequency, 'daily'); ?>>
+                            Daily
+                        </label>
+                    </p>
+                    <p>
+                        <label>
+                            <input type="radio" name="schedule_frequency" value="weekly" <?php checked($current_frequency, 'weekly'); ?>>
+                            Weekly (default)
+                        </label>
+                    </p>
+                    <p>
+                        <label>
+                            <input type="radio" name="schedule_frequency" value="monthly" <?php checked($current_frequency, 'monthly'); ?>>
+                            Monthly
+                        </label>
+                    </p>
+                    <p>
+                        <label>
+                            <input type="radio" name="schedule_frequency" value="custom" <?php checked($current_frequency, 'custom'); ?>>
+                            Custom interval (every <input type="number" name="custom_days" value="<?php echo esc_attr($custom_days); ?>" min="1" style="width: 60px;"> days)
+                        </label>
+                    </p>
+                    <p>
+                        <label>
+                            <input type="radio" name="schedule_frequency" value="manual" <?php checked($current_frequency, 'manual'); ?>>
+                            Manual (turned off)
+                        </label>
+                    </p>
+                    <?php submit_button('Save Schedule', 'secondary', 'save_schedule_frequency', false); ?>
+                </form>
+            </div>
+
+            <div class="card webcare-wp-status-card">
+                <h2><span class="dashicons dashicons-trash"></span> Log Retention</h2>
+                <p class="description">Automatically delete log files older than a set number of days. Set to 0 to keep logs forever.</p>
+                <form method="post" action="">
+                    <?php wp_nonce_field( 'webcare_save_retention', 'webcare_wp_status_nonce' ); ?>
+                    <p>
+                        <label>
+                            Delete logs older than
+                            <input type="number" name="log_retention_days" value="<?php echo esc_attr($retention_days); ?>" min="0" style="width: 60px;">
+                            days
+                        </label>
+                    </p>
+                    <?php submit_button('Save Retention', 'secondary', 'save_log_retention', false); ?>
+                </form>
+
+                <form method="post" action="" style="margin-top: 10px;">
+                    <?php wp_nonce_field( 'webcare_purge_logs', 'webcare_wp_status_nonce' ); ?>
+                    <?php submit_button('Purge Old Logs Now', 'secondary', 'purge_old_logs', false); ?>
+                </form>
+
+                <form method="post" action="" style="margin-top: 10px;">
+                    <?php wp_nonce_field( 'webcare_clear_logs', 'webcare_wp_status_nonce' ); ?>
+                    <?php submit_button('Clear All Logs', 'delete', 'clear_logs', false); ?>
+                </form>
+            </div>
+
+        </div>
+
+        <p class="webcare-wp-status-footer">
+            Made by <a href="https://webcare.co">WebCare — WordPress Maintenance</a>. Helping you manage your WordPress better.
+        </p>
     </div>
     <?php
 }
