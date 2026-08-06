@@ -2,7 +2,7 @@
 /*
 Plugin Name: WebCare WP Status
 Description: Save important system information into the database in JSON format.
-Version: 1.11
+Version: 1.12
 Author: WebCare
 Author URI: https://webcare.co
 Requires at least: 5.5
@@ -43,7 +43,7 @@ function wp_status_enqueue_assets($hook) {
         'webcare-wp-status-admin',
         plugin_dir_url(__FILE__) . 'assets/admin.css',
         array(),
-        '1.11'
+        '1.12'
     );
 }
 add_action('admin_enqueue_scripts', 'wp_status_enqueue_assets');
@@ -126,11 +126,26 @@ function wp_status_page() {
         }
     }
 
+    // Handle API key regeneration
+    if ( isset( $_POST['regenerate_api_key'] ) ) {
+        check_admin_referer( 'webcare_regenerate_api_key', 'webcare_wp_status_nonce' );
+
+        update_option( 'webcare_wp_status_api_key', webcare_wp_status_generate_api_key() );
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'API key regenerated. Any site pulling from this one will need the new key.', 'wp-status' ) . '</p></div>';
+    }
+
     // Get the current schedule frequency and custom days from the database
     $current_frequency = get_option('webcare_log_schedule_frequency', 'weekly');
     $custom_days = get_option('webcare_log_custom_days', 7); // Default 7 days for custom
     $retention_days = (int) get_option('webcare_log_retention_days', 90); // default: auto-delete after 90 days
     $delete_on_uninstall = (int) get_option('webcare_delete_on_uninstall', 0); // default: keep data on uninstall
+
+    // Installs active before the remote-access feature was added won't have a key yet
+    $api_key = get_option( 'webcare_wp_status_api_key' );
+    if ( ! $api_key ) {
+        $api_key = webcare_wp_status_generate_api_key();
+        update_option( 'webcare_wp_status_api_key', $api_key );
+    }
 
 
     ?>
@@ -139,7 +154,7 @@ function wp_status_page() {
             <span class="dashicons dashicons-chart-bar"></span>
             WebCare WP Status
         </h1>
-        <p class="description">Capture a snapshot of your site's system info, content counts, and plugin/theme setup — on demand or on a schedule. Logs are stored in the plugin's <code>/log</code> folder.</p>
+        <p class="description">Capture a snapshot of your site's system info, content counts, and plugin/theme setup — on demand or on a schedule. Logs are stored in <code>wp-content/webcare-wp-status-logs</code>, outside the plugin folder, so they survive plugin updates.</p>
 
         <hr class="wp-header-end">
 
@@ -229,6 +244,23 @@ function wp_status_page() {
                 <form method="post" action="" style="margin-top: 10px;">
                     <?php wp_nonce_field( 'webcare_clear_logs', 'webcare_wp_status_nonce' ); ?>
                     <?php submit_button('Clear All Logs', 'delete', 'clear_logs', false); ?>
+                </form>
+            </div>
+
+            <div class="card webcare-wp-status-card">
+                <h2><span class="dashicons dashicons-admin-network"></span> Remote Access</h2>
+                <p class="description">Lets another site pull this site's latest 3 logs over the REST API. Keep this key secret — anyone who has it can read this site's plugin, theme, and version inventory.</p>
+                <p>
+                    <label for="webcare_wp_status_api_key_field">API Key</label><br>
+                    <input type="text" id="webcare_wp_status_api_key_field" value="<?php echo esc_attr( $api_key ); ?>" readonly onclick="this.select();" style="width:100%; font-family: Consolas, Monaco, monospace; font-size: 12px; margin-top: 4px;">
+                </p>
+                <p>
+                    <label>Endpoint</label><br>
+                    <input type="text" value="<?php echo esc_attr( rest_url( 'webcare-wp-status/v1/logs' ) ); ?>" readonly onclick="this.select();" style="width:100%; font-family: Consolas, Monaco, monospace; font-size: 12px; margin-top: 4px;">
+                </p>
+                <form method="post" action="" onsubmit="return confirm('Regenerating will break any site currently pulling with the old key. Continue?');">
+                    <?php wp_nonce_field( 'webcare_regenerate_api_key', 'webcare_wp_status_nonce' ); ?>
+                    <?php submit_button('Regenerate Key', 'secondary', 'regenerate_api_key', false); ?>
                 </form>
             </div>
 

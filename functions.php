@@ -330,6 +330,65 @@ function webcare_wp_status_download_log() {
     exit;
 }
 
+// A random 64-char hex secret, used to authenticate remote requests to the REST endpoint below.
+function webcare_wp_status_generate_api_key() {
+    return bin2hex( random_bytes( 32 ) );
+}
+
+// Register the REST endpoint another site (the "puller") can call to pull this site's
+// latest logs. Deliberately has no capability check — it's meant to be called machine-to-
+// machine with no logged-in WP user involved. The API key in the request header IS the auth.
+add_action( 'rest_api_init', 'webcare_wp_status_register_rest_routes' );
+function webcare_wp_status_register_rest_routes() {
+    register_rest_route( 'webcare-wp-status/v1', '/logs', array(
+        'methods'             => 'GET',
+        'callback'            => 'webcare_wp_status_rest_get_logs',
+        'permission_callback' => 'webcare_wp_status_rest_check_key',
+    ) );
+}
+
+function webcare_wp_status_rest_check_key( $request ) {
+    $stored   = get_option( 'webcare_wp_status_api_key' );
+    $provided = $request->get_header( 'x-webcare-key' );
+
+    if ( ! $stored || ! $provided || ! hash_equals( $stored, $provided ) ) {
+        return new WP_Error(
+            'webcare_wp_status_unauthorized',
+            __( 'Missing or invalid API key.', 'wp-status' ),
+            array( 'status' => 401 )
+        );
+    }
+
+    return true;
+}
+
+// Returns this site's 3 most recent logs. The limit is enforced here, server-side —
+// not something a caller can raise by passing a bigger number.
+function webcare_wp_status_rest_get_logs( $request ) {
+    $log_dir   = webcare_wp_status_log_dir();
+    $site_host = sanitize_file_name( preg_replace( '#^https?://#', '', site_url() ) );
+
+    $files = (array) glob( $log_dir . $site_host . '-*.json' );
+    usort( $files, function( $a, $b ) {
+        return filemtime( $b ) - filemtime( $a );
+    } );
+    $files = array_slice( $files, 0, 3 );
+
+    $logs = array();
+    foreach ( $files as $file ) {
+        $data = json_decode( file_get_contents( $file ), true );
+        if ( $data ) {
+            $logs[] = $data;
+        }
+    }
+
+    return new WP_REST_Response( array(
+        'site'  => site_url(),
+        'count' => count( $logs ),
+        'logs'  => $logs,
+    ), 200 );
+}
+
 // Delete this site's log files older than $days. Returns how many were removed.
 function webcare_wp_status_purge_old_logs( $days ) {
     $days = (int) $days;
@@ -434,6 +493,7 @@ register_activation_hook(__FILE__, function() {
     webcare_update_cron_schedule($frequency);
 
     add_option( 'webcare_log_retention_days', 90 ); // Only sets it if it doesn't already exist
+    add_option( 'webcare_wp_status_api_key', webcare_wp_status_generate_api_key() ); // Only sets it if it doesn't already exist
 
     $log_dir = webcare_wp_status_log_dir();
     if ( ! is_dir( $log_dir ) ) {
