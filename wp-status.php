@@ -2,7 +2,7 @@
 /*
 Plugin Name: WebCare WP Status
 Description: Save important system information into the database in JSON format.
-Version: 1.9
+Version: 1.10
 Author: WebCare
 Author URI: https://webcare.co
 Requires at least: 5.5
@@ -43,7 +43,7 @@ function wp_status_enqueue_assets($hook) {
         'webcare-wp-status-admin',
         plugin_dir_url(__FILE__) . 'assets/admin.css',
         array(),
-        '1.9'
+        '1.10'
     );
 }
 add_action('admin_enqueue_scripts', 'wp_status_enqueue_assets');
@@ -97,11 +97,20 @@ function wp_status_page() {
         $retention_days = isset( $_POST['log_retention_days'] ) ? absint( $_POST['log_retention_days'] ) : 0;
         update_option( 'webcare_log_retention_days', $retention_days );
 
+        $delete_on_uninstall = isset( $_POST['delete_on_uninstall'] ) ? 1 : 0;
+        update_option( 'webcare_delete_on_uninstall', $delete_on_uninstall );
+
         if ( $retention_days > 0 ) {
-            echo '<div class="notice notice-success"><p>' . esc_html( sprintf( __( 'Logs older than %d day(s) will now be auto-deleted.', 'wp-status' ), $retention_days ) ) . '</p></div>';
+            $message = sprintf( __( 'Logs older than %d day(s) will now be auto-deleted.', 'wp-status' ), $retention_days );
         } else {
-            echo '<div class="notice notice-success"><p>' . esc_html__( 'Auto-delete turned off. Logs will be kept indefinitely.', 'wp-status' ) . '</p></div>';
+            $message = __( 'Auto-delete turned off. Logs will be kept indefinitely.', 'wp-status' );
         }
+
+        $message .= ' ' . ( $delete_on_uninstall
+            ? __( 'Logs and settings will be deleted when this plugin is uninstalled.', 'wp-status' )
+            : __( 'Logs and settings will be kept if this plugin is uninstalled.', 'wp-status' ) );
+
+        echo '<div class="notice notice-success"><p>' . esc_html( $message ) . '</p></div>';
     }
 
     // Handle purging old logs on demand
@@ -121,6 +130,7 @@ function wp_status_page() {
     $current_frequency = get_option('webcare_log_schedule_frequency', 'weekly');
     $custom_days = get_option('webcare_log_custom_days', 7); // Default 7 days for custom
     $retention_days = (int) get_option('webcare_log_retention_days', 90); // default: auto-delete after 90 days
+    $delete_on_uninstall = (int) get_option('webcare_delete_on_uninstall', 0); // default: keep data on uninstall
 
 
     ?>
@@ -200,6 +210,12 @@ function wp_status_page() {
                             Delete logs older than
                             <input type="number" name="log_retention_days" value="<?php echo esc_attr($retention_days); ?>" min="0" style="width: 60px;">
                             days
+                        </label>
+                    </p>
+                    <p>
+                        <label>
+                            <input type="checkbox" name="delete_on_uninstall" value="1" <?php checked($delete_on_uninstall, 1); ?>>
+                            Delete all logs and settings when this plugin is uninstalled
                         </label>
                     </p>
                     <?php submit_button('Save Retention', 'secondary', 'save_log_retention', false); ?>

@@ -76,12 +76,13 @@ function webcare_wp_status_show_log(){
 
                     echo '<td>CSS: ' . esc_html($data['css_js_count']['css']) . ' / JS: ' . esc_html($data['css_js_count']['js']) . '</td>';
 
-                    // Folder size information
+                    // Folder size information (older logs stored these pre-formatted; newer
+                    // logs store raw bytes so totals can be compared — format handles both)
                     echo '<td><ul class="webcare-wp-status-list">';
-                    echo '<li><span class="label">WP folder:</span> ' . esc_html($data['wp_folder_size']) . '</li>';
-                    echo '<li><span class="label">Plugins:</span> ' . esc_html($data['plugin_folder_size']) . '</li>';
-                    echo '<li><span class="label">Media:</span> ' . esc_html($data['upload_folder_size']) . '</li>';
-                    echo '<li><span class="label">Database:</span> ' . esc_html($data['db_size']) . '</li>';
+                    echo '<li><span class="label">WP folder:</span> ' . esc_html( webcare_wp_status_format_size( $data['wp_folder_size'] ) ) . '</li>';
+                    echo '<li><span class="label">Plugins:</span> ' . esc_html( webcare_wp_status_format_size( $data['plugin_folder_size'] ) ) . '</li>';
+                    echo '<li><span class="label">Media:</span> ' . esc_html( webcare_wp_status_format_size( $data['upload_folder_size'] ) ) . '</li>';
+                    echo '<li><span class="label">Database:</span> ' . esc_html( webcare_wp_status_format_size( $data['db_size'] ) ) . '</li>';
                     echo '</ul></td>';
 
                     // Users count, broken down by role

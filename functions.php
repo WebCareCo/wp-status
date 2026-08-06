@@ -4,17 +4,17 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly.
 }
 
-// Calculate folder size
+// Calculate folder size, in raw bytes (so it can be compared/summed later)
 function wp_system_info_saver_folder_size($folder) {
     $total_size = 0;
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($folder, RecursiveDirectoryIterator::SKIP_DOTS));
     foreach ($files as $file) {
         $total_size += $file->getSize();
     }
-    return size_format($total_size);
+    return $total_size;
 }
 
-// Calculate Database size
+// Calculate Database size, in raw bytes
 function wp_system_info_saver_db_size() {
     global $wpdb;
     $size = 0;
@@ -22,7 +22,34 @@ function wp_system_info_saver_db_size() {
     foreach ($tables as $table) {
         $size += $table->Data_length + $table->Index_length;
     }
-    return size_format($size);
+    return $size;
+}
+
+// Logs written before this version stored these fields as already-formatted
+// strings (e.g. "612 MB"); newer logs store raw bytes so they can be compared.
+// Format either shape the same way for display.
+function webcare_wp_status_format_size( $value ) {
+    if ( is_numeric( $value ) ) {
+        return size_format( (float) $value );
+    }
+    return (string) $value;
+}
+
+// Sum of the four size fields on a log entry, in bytes. Returns null if none
+// of them are numeric (i.e. this is a pre-1.10 log stored as formatted strings).
+function webcare_wp_status_total_bytes( $data ) {
+    $fields  = array( 'wp_folder_size', 'plugin_folder_size', 'upload_folder_size', 'db_size' );
+    $total   = 0;
+    $has_any = false;
+
+    foreach ( $fields as $field ) {
+        if ( isset( $data[ $field ] ) && is_numeric( $data[ $field ] ) ) {
+            $total  += (float) $data[ $field ];
+            $has_any = true;
+        }
+    }
+
+    return $has_any ? $total : null;
 }
 
 // Count attached CSS and JS on the main page, as seen by a logged-out visitor.
@@ -353,4 +380,116 @@ function webcare_wp_status_scheduled_run(){
     } else {
         echo "<p>No scheduled log generation.</p>";
     }
+}
+
+// Register the "WebCare WP Status" widget on the main WP Dashboard (index.php)
+add_action( 'wp_dashboard_setup', 'webcare_wp_status_register_dashboard_widget' );
+function webcare_wp_status_register_dashboard_widget() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    wp_add_dashboard_widget(
+        'webcare_wp_status_dashboard_widget',
+        'WebCare WP Status',
+        'webcare_wp_status_render_dashboard_widget'
+    );
+}
+
+// Build one trend row: current value, formatted, with an up/down arrow versus the previous log
+function webcare_wp_status_widget_row( $label, $current, $previous, $is_size = false ) {
+    $format = function( $n ) use ( $is_size ) {
+        return $is_size ? size_format( $n ) : number_format_i18n( $n );
+    };
+
+    $current_display = ( null === $current ) ? '&#8212;' : esc_html( $format( $current ) );
+
+    $trend = '<span class="webcare-wp-status-widget-trend is-flat">&#8212;</span>';
+
+    if ( null !== $current && null !== $previous ) {
+        $diff = $current - $previous;
+
+        if ( $diff > 0 ) {
+            $trend = '<span class="webcare-wp-status-widget-trend is-up" title="Up from last log">&#9650; ' . esc_html( $format( $diff ) ) . '</span>';
+        } elseif ( $diff < 0 ) {
+            $trend = '<span class="webcare-wp-status-widget-trend is-down" title="Down from last log">&#9660; ' . esc_html( $format( abs( $diff ) ) ) . '</span>';
+        } else {
+            $trend = '<span class="webcare-wp-status-widget-trend is-flat">No change</span>';
+        }
+    }
+
+    return '<li class="webcare-wp-status-widget-row">'
+        . '<span class="webcare-wp-status-widget-label">' . esc_html( $label ) . '</span>'
+        . '<span class="webcare-wp-status-widget-value">' . $current_display . '</span>'
+        . $trend
+        . '</li>';
+}
+
+function webcare_wp_status_render_dashboard_widget() {
+    $log_dir   = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+    $site_host = sanitize_file_name( preg_replace( '#^https?://#', '', site_url() ) );
+    $tools_url = admin_url( 'tools.php?page=wp_status' );
+
+    $log_files = (array) glob( $log_dir . $site_host . '-*.json' );
+    usort( $log_files, function( $a, $b ) {
+        return filemtime( $b ) - filemtime( $a );
+    } );
+
+    ?>
+    <style>
+        .webcare-wp-status-widget-list { margin: 0 0 10px; padding: 0; list-style: none; }
+        .webcare-wp-status-widget-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f0f0f1; font-size: 13px; }
+        .webcare-wp-status-widget-row:last-child { border-bottom: none; }
+        .webcare-wp-status-widget-label { flex: 1 1 auto; color: #1d2327; }
+        .webcare-wp-status-widget-value { font-weight: 600; }
+        .webcare-wp-status-widget-trend { min-width: 84px; text-align: right; font-size: 12px; }
+        .webcare-wp-status-widget-trend.is-up { color: #2271b1; }
+        .webcare-wp-status-widget-trend.is-down { color: #646970; }
+        .webcare-wp-status-widget-trend.is-flat { color: #a7aaad; }
+        .webcare-wp-status-widget-meta { margin: 0 0 8px; color: #646970; font-size: 12px; }
+        .webcare-wp-status-widget-link { margin: 0; }
+    </style>
+    <?php
+
+    if ( ! $log_files ) {
+        echo '<p>' . esc_html__( 'No logs yet for this site.', 'wp-status' ) . '</p>';
+        echo '<p class="webcare-wp-status-widget-link"><a href="' . esc_url( $tools_url ) . '">' . esc_html__( 'Create your first log →', 'wp-status' ) . '</a></p>';
+        return;
+    }
+
+    $latest = json_decode( file_get_contents( $log_files[0] ), true );
+
+    if ( ! $latest ) {
+        echo '<p>' . esc_html__( 'Could not read the latest log.', 'wp-status' ) . '</p>';
+        return;
+    }
+
+    $previous = isset( $log_files[1] ) ? json_decode( file_get_contents( $log_files[1] ), true ) : null;
+
+    $current_content  = (int) $latest['pages_count'] + (int) $latest['posts_count'] + (int) $latest['published_custom_posts'];
+    $current_plugins  = (int) $latest['plugins_count'];
+    $current_size     = webcare_wp_status_total_bytes( $latest );
+
+    $previous_content = $previous ? (int) $previous['pages_count'] + (int) $previous['posts_count'] + (int) $previous['published_custom_posts'] : null;
+    $previous_plugins = $previous ? (int) $previous['plugins_count'] : null;
+    $previous_size    = $previous ? webcare_wp_status_total_bytes( $previous ) : null;
+
+    echo '<ul class="webcare-wp-status-widget-list">';
+    echo webcare_wp_status_widget_row( __( 'Pages, Posts & CPTs', 'wp-status' ), $current_content, $previous_content );
+    echo webcare_wp_status_widget_row( __( 'Plugins Installed', 'wp-status' ), $current_plugins, $previous_plugins );
+    echo webcare_wp_status_widget_row( __( 'Total Site Size', 'wp-status' ), $current_size, $previous_size, true );
+    echo '</ul>';
+
+    if ( $previous ) {
+        echo '<p class="webcare-wp-status-widget-meta">' . esc_html( sprintf(
+            /* translators: 1: latest log date, 2: previous log date */
+            __( 'Comparing %1$s to %2$s', 'wp-status' ),
+            mysql2date( 'd M Y', $latest['date'] ),
+            mysql2date( 'd M Y', $previous['date'] )
+        ) ) . '</p>';
+    } else {
+        echo '<p class="webcare-wp-status-widget-meta">' . esc_html__( 'Generate one more log to see trends.', 'wp-status' ) . '</p>';
+    }
+
+    echo '<p class="webcare-wp-status-widget-link"><a href="' . esc_url( $tools_url ) . '">' . esc_html__( 'View full report →', 'wp-status' ) . '</a></p>';
 }
