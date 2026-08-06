@@ -6,11 +6,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 function webcare_wp_status_show_log(){
         // Directory for logs
-        $log_dir = trailingslashit( plugin_dir_path(__FILE__) . 'log' );
+        $log_dir = webcare_wp_status_log_dir();
 
         // Check if the log folder exists, create if not
         if (!is_dir($log_dir)) {
-            mkdir($log_dir, 0755, true);
+            wp_mkdir_p($log_dir);
         }
         webcare_wp_status_protect_log_dir( $log_dir );
 
@@ -24,103 +24,117 @@ function webcare_wp_status_show_log(){
             return filemtime($b) - filemtime($a); // Descending order
         });
 
+        // Decode everything up front so each row can compare itself to the next
+        // (chronologically earlier) entry — no extra file reads versus before,
+        // just reorganized so a row can see its neighbor.
+        $entries = array();
+        foreach ( $log_files as $file ) {
+            $data = json_decode( file_get_contents( $file ), true );
+            if ( $data ) {
+                $entries[] = array(
+                    'filename' => basename( $file ),
+                    'data'     => $data,
+                );
+            }
+        }
+
         echo '<div class="webcare-wp-status-section-title">';
         echo '<span class="dashicons dashicons-list-view"></span>';
         echo '<h2 style="margin:0;">System Info Logs';
-        if ( $log_files ) {
-            echo ' <span class="webcare-wp-status-count">(' . esc_html( count( $log_files ) ) . ')</span>';
+        if ( $entries ) {
+            echo ' <span class="webcare-wp-status-count">(' . esc_html( count( $entries ) ) . ')</span>';
         }
         echo '</h2>';
         echo '</div>';
 
-        if ($log_files) {
+        if ($entries) {
             echo '<table class="widefat fixed striped webcare-wp-status-table">';
             echo '<thead><tr><th>Date</th><th>Systems</th><th>Pages and Posts</th><th>Plugins</th><th>Front Page Files</th><th>Folder Size</th><th>Users Count</th><th>Actions</th></tr></thead>';
             echo '<tbody>';
 
-            foreach ($log_files as $file) {
-                $json_data = file_get_contents($file);
-                $data = json_decode($json_data, true);
+            foreach ( $entries as $i => $entry ) {
+                $data     = $entry['data'];
+                $filename = $entry['filename'];
+                $previous = isset( $entries[ $i + 1 ] ) ? $entries[ $i + 1 ]['data'] : null;
 
-                if ($data) {
-                    $filename = basename($file);
-                    $theme_badge_class = ( 'Active' === $data['theme_status'] ) ? 'is-active' : 'is-inactive';
+                $theme_badge_class = ( 'Active' === $data['theme_status'] ) ? 'is-active' : 'is-inactive';
 
-                    echo '<tr>';
-                    echo '<td>' . esc_html( mysql2date( 'd M Y h:ia', $data['date'] ) ) . '</td>';
+                echo '<tr>';
+                echo '<td>' . esc_html( mysql2date( 'd M Y h:ia', $data['date'] ) ) . '</td>';
 
-                    // Systems information
-                    echo '<td><ul class="webcare-wp-status-list">';
-                    echo '<li><span class="label">WordPress:</span> ' . esc_html($data['wordpress_version']) . '</li>';
-                    echo '<li><span class="label">PHP:</span> ' . esc_html($data['php_version']) . '</li>';
-                    echo '<li><span class="label">MySQL:</span> ' . esc_html($data['mysql_version']) . '</li>';
-                    echo '<li><span class="label">Theme:</span> ' . esc_html($data['theme']) . ' <span class="webcare-wp-status-badge ' . esc_attr($theme_badge_class) . '">' . esc_html($data['theme_status']) . '</span></li>';
-                    echo '<li><span class="label">Parent theme:</span> ' . esc_html($data['parent_theme']) . ' (' . esc_html($data['parent_theme_version']) . ')</li>';
-                    echo '</ul></td>';
+                // Systems information
+                echo '<td><ul class="webcare-wp-status-list">';
+                echo '<li><span class="label">WordPress:</span> ' . esc_html($data['wordpress_version']) . webcare_wp_status_trend( $data['wordpress_version'] ?? null, $previous['wordpress_version'] ?? null, 'version' ) . '</li>';
+                echo '<li><span class="label">PHP:</span> ' . esc_html($data['php_version']) . webcare_wp_status_trend( $data['php_version'] ?? null, $previous['php_version'] ?? null, 'version' ) . '</li>';
+                echo '<li><span class="label">MySQL:</span> ' . esc_html($data['mysql_version']) . webcare_wp_status_trend( $data['mysql_version'] ?? null, $previous['mysql_version'] ?? null, 'version' ) . '</li>';
+                echo '<li><span class="label">Theme:</span> ' . esc_html($data['theme']) . ' <span class="webcare-wp-status-badge ' . esc_attr($theme_badge_class) . '">' . esc_html($data['theme_status']) . '</span>' . webcare_wp_status_trend( $data['theme'] ?? null, $previous['theme'] ?? null, 'text' ) . '</li>';
+                echo '<li><span class="label">Parent theme:</span> ' . esc_html($data['parent_theme']) . ' (' . esc_html($data['parent_theme_version']) . ')' . webcare_wp_status_trend( $data['parent_theme'] ?? null, $previous['parent_theme'] ?? null, 'text' ) . '</li>';
+                echo '</ul></td>';
 
-                    // Posts and pages information
-                    echo '<td><ul class="webcare-wp-status-list">';
-                    echo '<li><span class="label">Pages published:</span> ' . esc_html($data['pages_count']) . '</li>';
-                    echo '<li><span class="label">Pages draft:</span> ' . esc_html($data['pages_draft_count']) . '</li>';
-                    echo '<li><span class="label">Posts published:</span> ' . esc_html($data['posts_count']) . '</li>';
-                    echo '<li><span class="label">Posts draft:</span> ' . esc_html($data['posts_draft_count']) . '</li>';
-                    echo '<li><span class="label">Custom posts:</span> ' . esc_html($data['published_custom_posts']) . '</li>';
-                    echo '</ul></td>';
+                // Posts and pages information
+                echo '<td><ul class="webcare-wp-status-list">';
+                echo '<li><span class="label">Pages published:</span> ' . esc_html($data['pages_count']) . webcare_wp_status_trend( $data['pages_count'] ?? null, $previous['pages_count'] ?? null ) . '</li>';
+                echo '<li><span class="label">Pages draft:</span> ' . esc_html($data['pages_draft_count']) . webcare_wp_status_trend( $data['pages_draft_count'] ?? null, $previous['pages_draft_count'] ?? null ) . '</li>';
+                echo '<li><span class="label">Posts published:</span> ' . esc_html($data['posts_count']) . webcare_wp_status_trend( $data['posts_count'] ?? null, $previous['posts_count'] ?? null ) . '</li>';
+                echo '<li><span class="label">Posts draft:</span> ' . esc_html($data['posts_draft_count']) . webcare_wp_status_trend( $data['posts_draft_count'] ?? null, $previous['posts_draft_count'] ?? null ) . '</li>';
+                echo '<li><span class="label">Custom posts:</span> ' . esc_html($data['published_custom_posts']) . webcare_wp_status_trend( $data['published_custom_posts'] ?? null, $previous['published_custom_posts'] ?? null ) . '</li>';
+                echo '</ul></td>';
 
-                    // Plugins information
-                    echo '<td><ul class="webcare-wp-status-list">';
-                    echo '<li><span class="label">Total:</span> ' . esc_html($data['plugins_count']) . '</li>';
-                    echo '<li><span class="label">Active:</span> ' . esc_html($data['active_plugins_count']) . '</li>';
-                    echo '<li><span class="label">Inactive:</span> ' . esc_html($data['inactive_plugins_count']) . '</li>';
-                    echo '</ul></td>';
+                // Plugins information
+                echo '<td><ul class="webcare-wp-status-list">';
+                echo '<li><span class="label">Total:</span> ' . esc_html($data['plugins_count']) . webcare_wp_status_trend( $data['plugins_count'] ?? null, $previous['plugins_count'] ?? null ) . '</li>';
+                echo '<li><span class="label">Active:</span> ' . esc_html($data['active_plugins_count']) . webcare_wp_status_trend( $data['active_plugins_count'] ?? null, $previous['active_plugins_count'] ?? null ) . '</li>';
+                echo '<li><span class="label">Inactive:</span> ' . esc_html($data['inactive_plugins_count']) . webcare_wp_status_trend( $data['inactive_plugins_count'] ?? null, $previous['inactive_plugins_count'] ?? null ) . '</li>';
+                echo '</ul></td>';
 
-                    echo '<td>CSS: ' . esc_html($data['css_js_count']['css']) . ' / JS: ' . esc_html($data['css_js_count']['js']) . '</td>';
+                echo '<td>CSS: ' . esc_html($data['css_js_count']['css']) . webcare_wp_status_trend( $data['css_js_count']['css'] ?? null, $previous['css_js_count']['css'] ?? null ) . ' / JS: ' . esc_html($data['css_js_count']['js']) . webcare_wp_status_trend( $data['css_js_count']['js'] ?? null, $previous['css_js_count']['js'] ?? null ) . '</td>';
 
-                    // Folder size information (older logs stored these pre-formatted; newer
-                    // logs store raw bytes so totals can be compared — format handles both)
-                    echo '<td><ul class="webcare-wp-status-list">';
-                    echo '<li><span class="label">WP folder:</span> ' . esc_html( webcare_wp_status_format_size( $data['wp_folder_size'] ) ) . '</li>';
-                    echo '<li><span class="label">Plugins:</span> ' . esc_html( webcare_wp_status_format_size( $data['plugin_folder_size'] ) ) . '</li>';
-                    echo '<li><span class="label">Media:</span> ' . esc_html( webcare_wp_status_format_size( $data['upload_folder_size'] ) ) . '</li>';
-                    echo '<li><span class="label">Database:</span> ' . esc_html( webcare_wp_status_format_size( $data['db_size'] ) ) . '</li>';
-                    echo '</ul></td>';
+                // Folder size information (older logs stored these pre-formatted; newer
+                // logs store raw bytes so totals can be compared — format handles both,
+                // and the trend helper quietly skips the arrow when either side isn't numeric)
+                echo '<td><ul class="webcare-wp-status-list">';
+                echo '<li><span class="label">WP folder:</span> ' . esc_html( webcare_wp_status_format_size( $data['wp_folder_size'] ) ) . webcare_wp_status_trend( $data['wp_folder_size'] ?? null, $previous['wp_folder_size'] ?? null, 'size' ) . '</li>';
+                echo '<li><span class="label">Plugins:</span> ' . esc_html( webcare_wp_status_format_size( $data['plugin_folder_size'] ) ) . webcare_wp_status_trend( $data['plugin_folder_size'] ?? null, $previous['plugin_folder_size'] ?? null, 'size' ) . '</li>';
+                echo '<li><span class="label">Media:</span> ' . esc_html( webcare_wp_status_format_size( $data['upload_folder_size'] ) ) . webcare_wp_status_trend( $data['upload_folder_size'] ?? null, $previous['upload_folder_size'] ?? null, 'size' ) . '</li>';
+                echo '<li><span class="label">Database:</span> ' . esc_html( webcare_wp_status_format_size( $data['db_size'] ) ) . webcare_wp_status_trend( $data['db_size'] ?? null, $previous['db_size'] ?? null, 'size' ) . '</li>';
+                echo '</ul></td>';
 
-                    // Users count, broken down by role
-                    echo '<td><ul class="webcare-wp-status-list">';
-                    if ( is_array( $data['users_count'] ) ) {
-                        echo '<li><span class="label">Total:</span> ' . esc_html( $data['users_count']['total'] ) . '</li>';
-                        echo '<li><span class="label">Admin:</span> ' . esc_html( $data['users_count']['admin'] ) . '</li>';
-                        echo '<li><span class="label">Editor:</span> ' . esc_html( $data['users_count']['editor'] ) . '</li>';
-                        echo '<li><span class="label">Others:</span> ' . esc_html( $data['users_count']['others'] ) . '</li>';
-                        if ( ! empty( $data['users_count']['hidden'] ) ) {
-                            echo '<li><span class="label">Hidden:</span> ' . esc_html( $data['users_count']['hidden'] ) . '</li>';
-                        }
-                    } else {
-                        echo '<li><span class="label">Total:</span> ' . esc_html( $data['users_count'] ) . '</li>';
+                // Users count, broken down by role
+                echo '<td><ul class="webcare-wp-status-list">';
+                if ( is_array( $data['users_count'] ) ) {
+                    echo '<li><span class="label">Total:</span> ' . esc_html( $data['users_count']['total'] ) . webcare_wp_status_trend( $data['users_count']['total'] ?? null, $previous['users_count']['total'] ?? null ) . '</li>';
+                    echo '<li><span class="label">Admin:</span> ' . esc_html( $data['users_count']['admin'] ) . webcare_wp_status_trend( $data['users_count']['admin'] ?? null, $previous['users_count']['admin'] ?? null ) . '</li>';
+                    echo '<li><span class="label">Editor:</span> ' . esc_html( $data['users_count']['editor'] ) . webcare_wp_status_trend( $data['users_count']['editor'] ?? null, $previous['users_count']['editor'] ?? null ) . '</li>';
+                    echo '<li><span class="label">Others:</span> ' . esc_html( $data['users_count']['others'] ) . webcare_wp_status_trend( $data['users_count']['others'] ?? null, $previous['users_count']['others'] ?? null ) . '</li>';
+                    if ( ! empty( $data['users_count']['hidden'] ) ) {
+                        echo '<li><span class="label">Hidden:</span> ' . esc_html( $data['users_count']['hidden'] ) . '</li>';
                     }
-                    echo '</ul></td>';
-
-                    // Actions
-                    $download_url = wp_nonce_url(
-                        admin_url( 'admin-post.php?action=webcare_download_log&file=' . rawurlencode( $filename ) ),
-                        'webcare_download_log_' . $filename
-                    );
-                    $delete_url = wp_nonce_url(
-                        admin_url( 'tools.php?page=wp_status&delete_log=' . rawurlencode( $filename ) ),
-                        'webcare_delete_log_' . $filename
-                    );
-
-                    echo '<td><div class="webcare-wp-status-actions">';
-                    echo '<a href="' . esc_url( $download_url ) . '" class="button button-small"><span class="dashicons dashicons-download"></span> Download</a>';
-                    echo '<a href="' . esc_url( $delete_url ) . '" class="button button-small button-danger" onclick="return confirm(\'Delete this log file?\');"><span class="dashicons dashicons-trash"></span> Delete</a>';
-                    echo '</div></td>';
-
-                    echo '</tr>';
+                } else {
+                    echo '<li><span class="label">Total:</span> ' . esc_html( $data['users_count'] ) . '</li>';
                 }
+                echo '</ul></td>';
+
+                // Actions
+                $download_url = wp_nonce_url(
+                    admin_url( 'admin-post.php?action=webcare_download_log&file=' . rawurlencode( $filename ) ),
+                    'webcare_download_log_' . $filename
+                );
+                $delete_url = wp_nonce_url(
+                    admin_url( 'tools.php?page=wp_status&delete_log=' . rawurlencode( $filename ) ),
+                    'webcare_delete_log_' . $filename
+                );
+
+                echo '<td><div class="webcare-wp-status-actions">';
+                echo '<a href="' . esc_url( $download_url ) . '" class="button button-small"><span class="dashicons dashicons-download"></span> Download</a>';
+                echo '<a href="' . esc_url( $delete_url ) . '" class="button button-small button-danger" onclick="return confirm(\'Delete this log file?\');"><span class="dashicons dashicons-trash"></span> Delete</a>';
+                echo '</div></td>';
+
+                echo '</tr>';
             }
 
             echo '</tbody>';
             echo '</table>';
+            echo '<p class="webcare-wp-status-table-note">Arrows compare each log to the one directly below it (the next-oldest). The last row has nothing older to compare to.</p>';
         } else {
             echo '<div class="webcare-wp-status-empty">';
             echo '<span class="dashicons dashicons-info-outline" style="font-size:32px;width:32px;height:32px;display:block;margin:0 auto 8px;"></span>';

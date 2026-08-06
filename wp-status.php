@@ -2,7 +2,7 @@
 /*
 Plugin Name: WebCare WP Status
 Description: Save important system information into the database in JSON format.
-Version: 1.10
+Version: 1.11
 Author: WebCare
 Author URI: https://webcare.co
 Requires at least: 5.5
@@ -43,7 +43,7 @@ function wp_status_enqueue_assets($hook) {
         'webcare-wp-status-admin',
         plugin_dir_url(__FILE__) . 'assets/admin.css',
         array(),
-        '1.10'
+        '1.11'
     );
 }
 add_action('admin_enqueue_scripts', 'wp_status_enqueue_assets');
@@ -67,7 +67,7 @@ function wp_status_page() {
         $log_file = sanitize_file_name( wp_unslash( $_GET['delete_log'] ) );
         check_admin_referer( 'webcare_delete_log_' . $log_file );
 
-        $log_dir       = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+        $log_dir       = webcare_wp_status_log_dir();
         $log_dir_real  = realpath( $log_dir );
         $log_path_real = realpath( $log_dir . $log_file );
 
@@ -83,7 +83,7 @@ function wp_status_page() {
     if ( isset( $_POST['clear_logs'] ) ) {
         check_admin_referer( 'webcare_clear_logs', 'webcare_wp_status_nonce' );
 
-        $log_dir = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+        $log_dir = webcare_wp_status_log_dir();
         foreach ( (array) glob( $log_dir . '*.json' ) as $file ) {
             unlink( $file );
         }

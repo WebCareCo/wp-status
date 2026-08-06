@@ -142,6 +142,38 @@
 	height: 16px;
 }
 
+.webcare-wp-status-trend {
+	display: inline-block;
+	margin-left: 4px;
+	font-size: 11px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.webcare-wp-status-trend.is-up {
+	color: #2271b1;
+}
+
+.webcare-wp-status-trend.is-down {
+	color: #646970;
+}
+
+.webcare-wp-status-trend.is-flat {
+	color: #c3c4c7;
+	font-weight: 400;
+}
+
+.webcare-wp-status-trend.is-changed {
+	color: #9a6300;
+}
+
+.webcare-wp-status-table-note {
+	margin: 8px 2px 0;
+	color: #a7aaad;
+	font-size: 12px;
+	font-style: italic;
+}
+
 .webcare-wp-status-empty {
 	background: #fff;
 	border: 1px solid #c3c4c7;

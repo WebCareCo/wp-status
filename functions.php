@@ -4,6 +4,53 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly.
 }
 
+// Where logs live. NOT inside the plugin's own folder (wp-content/plugins/wp-status/log) —
+// WordPress's plugin updater deletes and re-extracts the entire plugin directory on every
+// update/reinstall, which was silently wiping this folder every time. wp-content itself is
+// never touched by a plugin update, so logs stored here survive.
+function webcare_wp_status_log_dir() {
+    return trailingslashit( WP_CONTENT_DIR ) . 'webcare-wp-status-logs/';
+}
+
+// One-time move of any logs left behind in the old in-plugin location (pre-1.11) to the
+// new location above, so upgrading doesn't strand or lose existing log history.
+add_action( 'admin_init', 'webcare_wp_status_migrate_log_dir' );
+function webcare_wp_status_migrate_log_dir() {
+    if ( get_option( 'webcare_wp_status_log_dir_migrated' ) ) {
+        return;
+    }
+
+    $old_dir = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+    $new_dir = webcare_wp_status_log_dir();
+
+    if ( is_dir( $old_dir ) ) {
+        if ( ! is_dir( $new_dir ) ) {
+            wp_mkdir_p( $new_dir );
+        }
+        webcare_wp_status_protect_log_dir( $new_dir );
+
+        foreach ( (array) glob( $old_dir . '*.json' ) as $file ) {
+            $destination = $new_dir . basename( $file );
+            if ( ! file_exists( $destination ) ) {
+                @rename( $file, $destination );
+            }
+        }
+
+        foreach ( array( '.htaccess', 'web.config', 'index.php' ) as $protect_file ) {
+            $path = $old_dir . $protect_file;
+            if ( file_exists( $path ) ) {
+                @unlink( $path );
+            }
+        }
+
+        if ( ! glob( $old_dir . '*' ) ) {
+            @rmdir( $old_dir );
+        }
+    }
+
+    update_option( 'webcare_wp_status_log_dir_migrated', 1 );
+}
+
 // Calculate folder size, in raw bytes (so it can be compared/summed later)
 function wp_system_info_saver_folder_size($folder) {
     $total_size = 0;
@@ -50,6 +97,49 @@ function webcare_wp_status_total_bytes( $data ) {
     }
 
     return $has_any ? $total : null;
+}
+
+// Render a compact up/down/flat/changed indicator comparing $current to $previous.
+// kind: 'number' (plain count), 'size' (bytes, formatted with size_format), 'version'
+// (compared with version_compare, arrow shows update/downgrade), or 'text' (any change
+// is just flagged, since there's no natural "up" or "down" for e.g. a theme name).
+function webcare_wp_status_trend( $current, $previous, $kind = 'number' ) {
+    if ( null === $current || null === $previous ) {
+        return '';
+    }
+
+    if ( 'text' === $kind || 'version' === $kind ) {
+        if ( (string) $current === (string) $previous ) {
+            return ' <span class="webcare-wp-status-trend is-flat" title="No change since the previous log">&#8212;</span>';
+        }
+        if ( 'version' === $kind && version_compare( (string) $current, (string) $previous, '>' ) ) {
+            return ' <span class="webcare-wp-status-trend is-up" title="Updated since the previous log">&#9650;</span>';
+        }
+        if ( 'version' === $kind && version_compare( (string) $current, (string) $previous, '<' ) ) {
+            return ' <span class="webcare-wp-status-trend is-down" title="Downgraded since the previous log">&#9660;</span>';
+        }
+        return ' <span class="webcare-wp-status-trend is-changed" title="Changed since the previous log">changed</span>';
+    }
+
+    // number or size — guard against pre-1.10 logs where size fields were formatted
+    // strings ("612 MB") rather than raw bytes, which can't be diffed.
+    if ( ! is_numeric( $current ) || ! is_numeric( $previous ) ) {
+        return '';
+    }
+
+    $diff = (float) $current - (float) $previous;
+
+    if ( 0.0 === $diff ) {
+        return ' <span class="webcare-wp-status-trend is-flat" title="No change since the previous log">&#8212;</span>';
+    }
+
+    $diff_display = ( 'size' === $kind ) ? size_format( abs( $diff ) ) : number_format_i18n( abs( $diff ) );
+
+    if ( $diff > 0 ) {
+        return ' <span class="webcare-wp-status-trend is-up" title="Up from the previous log">&#9650; ' . esc_html( $diff_display ) . '</span>';
+    }
+
+    return ' <span class="webcare-wp-status-trend is-down" title="Down from the previous log">&#9660; ' . esc_html( $diff_display ) . '</span>';
 }
 
 // Count attached CSS and JS on the main page, as seen by a logged-out visitor.
@@ -186,9 +276,9 @@ function wp_system_info_saver_save_info($manual_trigger = false) { //added manua
         $json_data = json_encode($data);
 
         // Create log folder if not exists
-        $log_dir = trailingslashit( plugin_dir_path(__FILE__) . 'log' );
+        $log_dir = webcare_wp_status_log_dir();
         if (!is_dir($log_dir)) {
-            mkdir($log_dir, 0755, true);
+            wp_mkdir_p($log_dir);
         }
         webcare_wp_status_protect_log_dir( $log_dir );
 
@@ -224,7 +314,7 @@ function webcare_wp_status_download_log() {
     $file = isset( $_GET['file'] ) ? sanitize_file_name( wp_unslash( $_GET['file'] ) ) : '';
     check_admin_referer( 'webcare_download_log_' . $file );
 
-    $log_dir       = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+    $log_dir       = webcare_wp_status_log_dir();
     $log_dir_real  = realpath( $log_dir );
     $log_path_real = realpath( $log_dir . $file );
 
@@ -247,7 +337,7 @@ function webcare_wp_status_purge_old_logs( $days ) {
         return 0;
     }
 
-    $log_dir   = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+    $log_dir   = webcare_wp_status_log_dir();
     $site_host = sanitize_file_name( preg_replace( '#^https?://#', '', site_url() ) );
     $cutoff    = time() - ( $days * DAY_IN_SECONDS );
     $deleted   = 0;
@@ -345,9 +435,9 @@ register_activation_hook(__FILE__, function() {
 
     add_option( 'webcare_log_retention_days', 90 ); // Only sets it if it doesn't already exist
 
-    $log_dir = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+    $log_dir = webcare_wp_status_log_dir();
     if ( ! is_dir( $log_dir ) ) {
-        mkdir( $log_dir, 0755, true );
+        wp_mkdir_p( $log_dir );
     }
     webcare_wp_status_protect_log_dir( $log_dir );
 });
@@ -426,7 +516,7 @@ function webcare_wp_status_widget_row( $label, $current, $previous, $is_size = f
 }
 
 function webcare_wp_status_render_dashboard_widget() {
-    $log_dir   = trailingslashit( plugin_dir_path( __FILE__ ) . 'log' );
+    $log_dir   = webcare_wp_status_log_dir();
     $site_host = sanitize_file_name( preg_replace( '#^https?://#', '', site_url() ) );
     $tools_url = admin_url( 'tools.php?page=wp_status' );
 
