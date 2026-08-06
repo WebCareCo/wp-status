@@ -251,12 +251,11 @@ function wp_status_page() {
                 <h2><span class="dashicons dashicons-admin-network"></span> Remote Access</h2>
                 <p class="description">Lets another site pull this site's latest 3 logs over the REST API. Keep this key secret — anyone who has it can read this site's plugin, theme, and version inventory.</p>
                 <p>
-                    <label for="webcare_wp_status_api_key_field">API Key</label><br>
-                    <input type="text" id="webcare_wp_status_api_key_field" value="<?php echo esc_attr( $api_key ); ?>" readonly onclick="this.select();" style="width:100%; font-family: Consolas, Monaco, monospace; font-size: 12px; margin-top: 4px;">
-                </p>
-                <p>
-                    <label>Endpoint</label><br>
-                    <input type="text" value="<?php echo esc_attr( rest_url( 'webcare-wp-status/v1/logs' ) ); ?>" readonly onclick="this.select();" style="width:100%; font-family: Consolas, Monaco, monospace; font-size: 12px; margin-top: 4px;">
+                    <label for="webcare_wp_status_api_key_field">API Key</label>
+                    <span class="webcare-wp-status-key-row">
+                        <input type="password" id="webcare_wp_status_api_key_field" value="<?php echo esc_attr( $api_key ); ?>" readonly class="webcare-wp-status-key-input">
+                        <button type="button" class="button" onclick="var f=document.getElementById('webcare_wp_status_api_key_field');var shown=(f.type==='text');f.type=shown?'password':'text';this.textContent=shown?'Show Key':'Hide Key';if(!shown){f.focus();f.select();}">Show Key</button>
+                    </span>
                 </p>
                 <form method="post" action="" onsubmit="return confirm('Regenerating will break any site currently pulling with the old key. Continue?');">
                     <?php wp_nonce_field( 'webcare_regenerate_api_key', 'webcare_wp_status_nonce' ); ?>

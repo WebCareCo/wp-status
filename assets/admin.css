@@ -142,6 +142,19 @@
 	height: 16px;
 }
 
+.webcare-wp-status-key-row {
+	display: flex;
+	gap: 6px;
+	margin-top: 4px;
+}
+
+.webcare-wp-status-key-input {
+	flex: 1;
+	min-width: 0;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 12px;
+}
+
 .webcare-wp-status-trend {
 	display: inline-block;
 	margin-left: 4px;
