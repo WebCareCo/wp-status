@@ -192,6 +192,128 @@ function webcare_wp_status_protect_log_dir( $log_dir ) {
     }
 }
 
+// --- Firewall + update summary additions (2026-08) ---
+
+if ( ! defined( 'WEBCARE_WP_STATUS_WINDOW_DAYS' ) ) {
+    define( 'WEBCARE_WP_STATUS_WINDOW_DAYS', 30 );
+}
+
+// NinjaFirewall stores its logs as flat files under wp-content/nfwlog/firewall_YYYY-MM.php,
+// one per calendar month. These files persist on disk even while the plugin is deactivated,
+// so this reads them directly rather than relying on the plugin being active. Each line is
+// pipe-delimited; the 2nd bracketed field is the severity level. Values are NinjaFirewall's
+// own constants (NFWLOG_MEDIUM = 1, NFWLOG_HIGH = 2, NFWLOG_CRITICAL = 3), hardcoded here
+// (rather than read via defined()) so this still works while the plugin is deactivated and
+// its constants aren't loaded.
+function webcare_wp_status_get_ninjafirewall_summary( $days = null ) {
+    $days    = $days ?: WEBCARE_WP_STATUS_WINDOW_DAYS;
+    $log_dir = trailingslashit( WP_CONTENT_DIR ) . 'nfwlog/';
+
+    if ( ! is_dir( $log_dir ) ) {
+        return array( 'installed' => false );
+    }
+
+    $cutoff   = time() - ( $days * DAY_IN_SECONDS );
+    $critical = 0;
+    $medium   = 0;
+
+    $months = array_unique( array( date( 'Y-m' ), date( 'Y-m', strtotime( '-1 month' ) ) ) );
+
+    foreach ( $months as $month ) {
+        $file = $log_dir . 'firewall_' . $month . '.php';
+        if ( ! is_file( $file ) ) {
+            continue;
+        }
+        $handle = @fopen( $file, 'r' );
+        if ( ! $handle ) {
+            continue;
+        }
+        while ( ( $line = fgets( $handle ) ) !== false ) {
+            if ( ! preg_match( '/^\[(\d+)\]\s*\[(\d+)\]/', $line, $m ) ) {
+                continue;
+            }
+            $ts    = (int) $m[1];
+            $level = (int) $m[2];
+            if ( $ts < $cutoff ) {
+                continue;
+            }
+            if ( 3 === $level ) {
+                $critical++;
+            } elseif ( 1 === $level ) {
+                $medium++;
+            }
+        }
+        fclose( $handle );
+    }
+
+    return array(
+        'installed'   => true,
+        'active'      => function_exists( 'is_plugin_active' ) && is_plugin_active( 'ninjafirewall/ninjafirewall.php' ),
+        'critical'    => $critical,
+        'medium'      => $medium,
+        'window_days' => $days,
+    );
+}
+
+// Defender (WPMU DEV) logs blocked/lockout events to a real DB table rather than files.
+// "Blocked" here is every row in wp_defender_lockout_log within the window — this includes
+// 404 scans, failed logins, and plugin-file-request attempts, not only entries that actually
+// triggered a lockout. Narrow this to specific `type` values (e.g. only '404_lockout' and
+// 'auth_lock') if a stricter definition of "blocked" is wanted later.
+function webcare_wp_status_get_defender_summary( $days = null ) {
+    global $wpdb;
+    $days  = $days ?: WEBCARE_WP_STATUS_WINDOW_DAYS;
+    $table = $wpdb->prefix . 'defender_lockout_log';
+
+    $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+    if ( $exists !== $table ) {
+        return array( 'installed' => false );
+    }
+
+    $cutoff = time() - ( $days * DAY_IN_SECONDS );
+    $count  = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM `$table` WHERE date >= %d",
+        $cutoff
+    ) );
+
+    return array(
+        'installed'   => true,
+        'active'      => function_exists( 'is_plugin_active' ) && is_plugin_active( 'defender-security/wp-defender.php' ),
+        'blocked'     => $count,
+        'window_days' => $days,
+    );
+}
+
+// Outdated plugin count, from WordPress's own update-check data — no new tracking needed.
+// Reads the cached site transient WP already populates on its normal update-check schedule,
+// rather than forcing a fresh wordpress.org API call on every snapshot.
+function webcare_wp_status_get_outdated_plugins_summary() {
+    if ( ! function_exists( 'get_plugins' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+
+    $update_data   = get_site_transient( 'update_plugins' );
+    $installed     = get_plugins();
+    $outdated      = array();
+
+    if ( $update_data && ! empty( $update_data->response ) ) {
+        foreach ( $update_data->response as $plugin_file => $info ) {
+            // The update transient's objects don't carry a friendly "Name" field (just
+            // slug/plugin/version/url/package) — look the display name up from the
+            // regular installed-plugins list instead, falling back to the file path
+            // only if that lookup somehow comes up empty.
+            $outdated[] = isset( $installed[ $plugin_file ]['Name'] ) && $installed[ $plugin_file ]['Name']
+                ? $installed[ $plugin_file ]['Name']
+                : $plugin_file;
+        }
+    }
+
+    return array(
+        'outdated_count' => count( $outdated ),
+        'outdated_names' => $outdated,
+    );
+}
+
 // Save system info when form is submitted
 function wp_system_info_saver_save_info($manual_trigger = false) { //added manual trigger
     if ($manual_trigger || isset($_POST['save_system_info'])) {
@@ -270,6 +392,9 @@ function wp_system_info_saver_save_info($manual_trigger = false) { //added manua
                 'others' => $other_users,
                 'hidden' => $hidden_users,
             ),
+            'ninjafirewall' => webcare_wp_status_get_ninjafirewall_summary(),
+            'defender' => webcare_wp_status_get_defender_summary(),
+            'updates' => webcare_wp_status_get_outdated_plugins_summary(),
         );
 
 

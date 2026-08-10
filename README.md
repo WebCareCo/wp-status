@@ -1,7 +1,7 @@
 # WebCare Info Logger Plugin
 
 ## Description
-The WebCare Info Logger plugin allows you to collect and store detailed system information about your WordPress site in JSON format. The plugin gathers essential data, including WordPress version, PHP version, MySQL version, theme information, page/post counts, custom post type counts, active/inactive plugin details, CSS/JS asset counts, database size, media folder size, and user statistics. This data is then stored in a log file, which can be managed from the WordPress admin area. You can view, delete, or clear all logs directly from the plugin's interface.
+The WebCare Info Logger plugin allows you to collect and store detailed system information about your WordPress site in JSON format. The plugin gathers essential data, including WordPress version, PHP version, MySQL version, theme information, page/post counts, custom post type counts, active/inactive plugin details, CSS/JS asset counts, database size, media folder size, user statistics, outdated-plugin counts, and a rolling summary of blocked/lockout activity from NinjaFirewall and Defender (WPMU DEV) — useful early signals of a hack or defacement attempt. This data is then stored in a log file, which can be managed from the WordPress admin area. You can view, delete, or clear all logs directly from the plugin's interface.
 
 ## How to Use:
 1. **Install and Activate the Plugin:**
@@ -21,6 +21,8 @@ The WebCare Info Logger plugin allows you to collect and store detailed system i
    - Counts of CSS and JS assets loaded on the main page (without logging in)
    - Size of various WordPress folders (uploads, plugins, media, database)
    - User counts
+   - Outdated plugin counts and names
+   - Firewall activity summary (NinjaFirewall critical/medium hits, Defender blocked/lockout events) over a rolling window
 
 5. **Log Management:**
    - **Delete a Log:** Each log entry has a "Delete" button, allowing you to remove individual log files.
@@ -34,6 +36,7 @@ The WebCare Info Logger plugin allows you to collect and store detailed system i
 - Logs can be viewed and managed from the WordPress admin dashboard.
 - Automatically counts and logs CSS and JS files loaded on the main page.
 - Plugin logs key information such as posts, pages, CPTs, active/inactive plugins, folder sizes, and more.
+- Surfaces firewall/security signals (NinjaFirewall, Defender) and outdated-plugin counts to help spot a hack or defacement early.
 - Easy log deletion and management functionality.
 
 This plugin is ideal for site administrators who need a convenient way to track their site's system details over time or diagnose performance issues.
