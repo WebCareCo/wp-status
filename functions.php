@@ -229,7 +229,10 @@ function webcare_wp_status_get_ninjafirewall_summary( $days = null ) {
             continue;
         }
         while ( ( $line = fgets( $handle ) ) !== false ) {
-            if ( ! preg_match( '/^\[(\d+)\]\s*\[(\d+)\]/', $line, $m ) ) {
+            // Line format: [ts] [proc_time] [host] [#rule_id] [0] [level] [ip] [status] ...
+            // The level is the 6th bracketed field, not the 2nd (that's the float
+            // processing time) — skip the four fields in between to reach it.
+            if ( ! preg_match( '/^\[(\d+)\]\s*\[[^\]]*\]\s*\[[^\]]*\]\s*\[[^\]]*\]\s*\[[^\]]*\]\s*\[(\d)\]/', $line, $m ) ) {
                 continue;
             }
             $ts    = (int) $m[1];
