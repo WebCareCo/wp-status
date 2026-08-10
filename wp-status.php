@@ -2,7 +2,7 @@
 /*
 Plugin Name: WebCare WP Status
 Description: Save important system information into the database in JSON format, including firewall activity from NinjaFirewall and Defender.
-Version: 1.13
+Version: 1.14
 Author: WebCare
 Author URI: https://webcare.co
 Requires at least: 5.5

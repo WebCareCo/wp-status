@@ -215,6 +215,7 @@ function webcare_wp_status_get_ninjafirewall_summary( $days = null ) {
 
     $cutoff   = time() - ( $days * DAY_IN_SECONDS );
     $critical = 0;
+    $high     = 0;
     $medium   = 0;
 
     $months = array_unique( array( date( 'Y-m' ), date( 'Y-m', strtotime( '-1 month' ) ) ) );
@@ -240,8 +241,14 @@ function webcare_wp_status_get_ninjafirewall_summary( $days = null ) {
             if ( $ts < $cutoff ) {
                 continue;
             }
+            // NinjaFirewall's own constants: NFWLOG_MEDIUM = 1, NFWLOG_HIGH = 2,
+            // NFWLOG_CRITICAL = 3 (verified against ninjafirewall.php). HIGH was
+            // previously falling through uncounted — it landed in neither bucket.
+            // All three are now tallied.
             if ( 3 === $level ) {
                 $critical++;
+            } elseif ( 2 === $level ) {
+                $high++;
             } elseif ( 1 === $level ) {
                 $medium++;
             }
@@ -253,6 +260,7 @@ function webcare_wp_status_get_ninjafirewall_summary( $days = null ) {
         'installed'   => true,
         'active'      => function_exists( 'is_plugin_active' ) && is_plugin_active( 'ninjafirewall/ninjafirewall.php' ),
         'critical'    => $critical,
+        'high'        => $high,
         'medium'      => $medium,
         'window_days' => $days,
     );
