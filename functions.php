@@ -295,6 +295,57 @@ function webcare_wp_status_get_defender_summary( $days = null ) {
     );
 }
 
+// Simple History's own Log_Query class is in-process only (no REST API of its
+// own), so this reads it directly here — same pattern as the NinjaFirewall/
+// Defender readers above — and folds a compact summary into our own payload.
+// Only active if the Simple History plugin is installed; absent entirely
+// (not just empty) when it isn't, same convention as 'ninjafirewall'/'defender'.
+function webcare_wp_status_get_recent_activity( $limit = 10 ) {
+    if ( ! class_exists( '\Simple_History\Log_Query' ) ) {
+        return array( 'installed' => false );
+    }
+
+    $log_query      = new \Simple_History\Log_Query();
+    $simple_history = \Simple_History\Simple_History::get_instance();
+
+    $results = $log_query->query( array( 'posts_per_page' => (int) $limit ) );
+
+    $items = array();
+    foreach ( (array) $results['log_rows'] as $row ) {
+        $context = (array) $row->context;
+
+        if ( ! empty( $context['_user_login'] ) ) {
+            $user = $context['_user_login'];
+        } elseif ( 'wp_cli' === $row->initiator ) {
+            $user = 'WP-CLI';
+        } elseif ( 'web_user' === $row->initiator ) {
+            $user = 'Anonymous visitor';
+        } elseif ( 'wp' === $row->initiator ) {
+            $user = 'WordPress';
+        } else {
+            $user = 'Unknown';
+        }
+
+        // getLogRowPlainTextOutput() still HTML-entity-encodes quotes (e.g.
+        // &quot;) even though it's markup-free — decode so the stored value
+        // is plain, readable text, not something the consumer has to unescape.
+        $message = html_entity_decode( (string) $simple_history->getLogRowPlainTextOutput( $row ), ENT_QUOTES );
+
+        $items[] = array(
+            'date'    => $row->date,
+            'message' => $message,
+            'user'    => $user,
+            'level'   => $row->level,
+            'logger'  => $row->logger,
+        );
+    }
+
+    return array(
+        'installed' => true,
+        'items'     => $items,
+    );
+}
+
 // Outdated plugin count, from WordPress's own update-check data — no new tracking needed.
 // Reads the cached site transient WP already populates on its normal update-check schedule,
 // rather than forcing a fresh wordpress.org API call on every snapshot.
@@ -406,6 +457,7 @@ function wp_system_info_saver_save_info($manual_trigger = false) { //added manua
             'ninjafirewall' => webcare_wp_status_get_ninjafirewall_summary(),
             'defender' => webcare_wp_status_get_defender_summary(),
             'updates' => webcare_wp_status_get_outdated_plugins_summary(),
+            'recent_activity' => webcare_wp_status_get_recent_activity( 10 ),
         );
 
 
